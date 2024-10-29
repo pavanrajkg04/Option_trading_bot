@@ -1,74 +1,97 @@
-import yfinance as yf
 import streamlit as st
-from datetime import datetime
+import yfinance as yf
 import time
+from datetime import datetime
 
-# Set up the Streamlit page
-st.set_page_config(page_title="Bank Nifty CPR Signal", layout="centered")
-st.title("Bank Nifty CPR Signal Monitoring")
+class BankNiftyCPR:
+    def __init__(self):
+        self.top_cpr = None
+        self.bottom_cpr = None
+        self.check_count = 0
+        self.max_checks = 10  # Set maximum number of checks
 
-# Global variables to store CPR levels
-top_cpr = None
-bottom_cpr = None
+    def calculate_cpr(self):
+        # Define Bank Nifty symbol and fetch previous day's data
+        ticker_symbol = "^NSEBANK"
+        bank_nifty = yf.Ticker(ticker_symbol)
+        data = bank_nifty.history(period="5d")  # Fetch the last 5 days to ensure previous day's data
+        
+        if len(data) < 2:  # Ensure there's enough data
+            return None, None
+        
+        previous_day = data.iloc[-2]  # Select the previous day's row
 
-# Function to calculate CPR
-def calculate_cpr():
-    global top_cpr, bottom_cpr
+        # Extract High, Low, and Close values
+        high = previous_day['High']
+        low = previous_day['Low']
+        close = previous_day['Close']
 
-    # Define Bank Nifty symbol and fetch previous day's data
-    ticker_symbol = "^NSEBANK"
-    bank_nifty = yf.Ticker(ticker_symbol)
-    data = bank_nifty.history(period="5d")  # Fetch the last 5 days to ensure previous day's data
-    previous_day = data.iloc[-2]  # Select the previous day's row
+        # Calculate Top and Bottom CPR (TC and BC)
+        pivot_point = (high + low + close) / 3
+        self.top_cpr = (high + low) / 2
+        self.bottom_cpr = (pivot_point - (high - low) / 2)
 
-    # Extract High, Low, and Close values
-    high = previous_day['High']
-    low = previous_day['Low']
-    close = previous_day['Close']
+        return self.top_cpr, self.bottom_cpr
 
-    # Calculate Top and Bottom CPR (TC and BC)
-    pivot_point = (high + low + close) / 3
-    top_cpr = (high + low) / 2
-    bottom_cpr = (pivot_point - (high - low) / 2)
+    def check_signals(self):
+        # Fetch the latest price of Bank Nifty with a valid period
+        ticker_symbol = "^NSEBANK"
+        bank_nifty = yf.Ticker(ticker_symbol)
+        latest_data = bank_nifty.history(period="1d", interval="1m")  # Use interval="1m" with period="1d"
 
-    # Display calculated CPR levels
-    st.write(f"**[{datetime.now()}] CPR Calculated**")
-    st.write(f"**Top CPR (TC):** {top_cpr}")
-    st.write(f"**Bottom CPR (BC):** {bottom_cpr}")
-
-# Function to check for buy and put signals
-def check_signals():
-    # Fetch the latest price of Bank Nifty with a valid period
-    ticker_symbol = "^NSEBANK"
-    bank_nifty = yf.Ticker(ticker_symbol)
-    latest_data = bank_nifty.history(period="1d", interval="1m")  # Use interval="1m" with period="1d"
-
-    # Ensure latest_data is not empty
-    if not latest_data.empty:
-        current_price = latest_data['Close'].iloc[-1]  # Use iloc[-1] to get the last value safely
-
-        # Check for buy signal (current price crosses above top CPR)
-        if current_price >= top_cpr:
-            st.success(f"[{datetime.now()}] **Buy Signal!** Current Price: {current_price} has touched and is above Top CPR: {top_cpr}")
-
-        # Check for put signal (current price crosses below bottom CPR)
-        elif current_price <= bottom_cpr:
-            st.error(f"[{datetime.now()}] **Put Signal!** Current Price: {current_price} has touched and is below Bottom CPR: {bottom_cpr}")
-
+        # Ensure latest_data is not empty
+        if not latest_data.empty:
+            current_price = latest_data['Close'].iloc[-1]  # Use iloc[-1] to get the last value safely
+            return current_price
         else:
-            st.write(f"[{datetime.now()}] Current Price: {current_price} is between CPR levels. No signal.")
-    else:
-        st.warning(f"[{datetime.now()}] No data available for the latest price.")
+            return None
 
-# Calculate CPR on the first run
-if st.button("Calculate CPR"):
-    calculate_cpr()
+def main():
+    st.title("Bank Nifty CPR Monitoring")
+    cpr_monitor = BankNiftyCPR()
 
-# Check signals every few seconds (Auto-refresh)
-if top_cpr is not None and bottom_cpr is not None:
-    st.write("Monitoring for Buy and Put Signals...")
-    check_signals()
+    if st.button("Calculate CPR"):
+        top_cpr, bottom_cpr = cpr_monitor.calculate_cpr()
+        
+        if top_cpr is not None and bottom_cpr is not None:
+            st.success(f"Top CPR (TC): {top_cpr}")
+            st.success(f"Bottom CPR (BC): {bottom_cpr}")
+            st.session_state.top_cpr = top_cpr
+            st.session_state.bottom_cpr = bottom_cpr
+        else:
+            st.error("Not enough data to calculate CPR.")
 
-# Auto-refresh every 60 seconds
-st_autorefresh = st.experimental_rerun
-st_autorefresh(interval=60000, limit=100, key="signal_refresh")
+    if 'top_cpr' in st.session_state and 'bottom_cpr' in st.session_state:
+        current_price = cpr_monitor.check_signals()
+        
+        if current_price is not None:
+            st.write(f"Current Price: {current_price}")
+
+            # Check for buy and put signals
+            if current_price == st.session_state.top_cpr:
+                st.success(f"Buy Signal! Current Price: {current_price} has touched Top CPR: {st.session_state.top_cpr}")
+            elif current_price == st.session_state.bottom_cpr:
+                st.success(f"Put Signal! Current Price: {current_price} has touched Bottom CPR: {st.session_state.bottom_cpr}")
+            else:
+                st.warning(f"Current Price: {current_price} is not at CPR levels. No signal.")
+        else:
+            st.error("No data available for the latest price.")
+
+    st.write("### Monitoring will update every 5 seconds.")
+    while True:
+        time.sleep(5)  # You can adjust this interval as needed
+        if 'top_cpr' in st.session_state and 'bottom_cpr' in st.session_state:
+            current_price = cpr_monitor.check_signals()
+            if current_price is not None:
+                st.write(f"Current Price: {current_price}")
+
+                # Check for buy and put signals
+                if current_price == st.session_state.top_cpr:
+                    st.success(f"Buy Signal! Current Price: {current_price} has touched Top CPR: {st.session_state.top_cpr}")
+                elif current_price == st.session_state.bottom_cpr:
+                    st.success(f"Put Signal! Current Price: {current_price} has touched Bottom CPR: {st.session_state.bottom_cpr}")
+                else:
+                    st.warning(f"Current Price: {current_price} is not at CPR levels. No signal.")
+
+if __name__ == "__main__":
+    main()
