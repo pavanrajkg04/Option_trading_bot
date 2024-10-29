@@ -1,13 +1,19 @@
 import yfinance as yf
-import time
+import streamlit as st
 from datetime import datetime
+import time
 
-# Set a limit for testing purposes
-check_count = 0
-max_checks = 10  # Set maximum number of checks
+# Set up the Streamlit page
+st.set_page_config(page_title="Bank Nifty CPR Signal", layout="centered")
+st.title("Bank Nifty CPR Signal Monitoring")
 
+# Global variables to store CPR levels
+top_cpr = None
+bottom_cpr = None
+
+# Function to calculate CPR
 def calculate_cpr():
-    global top_cpr, bottom_cpr  # Use global variables to store top and bottom CPR for access in other functions
+    global top_cpr, bottom_cpr
 
     # Define Bank Nifty symbol and fetch previous day's data
     ticker_symbol = "^NSEBANK"
@@ -25,16 +31,13 @@ def calculate_cpr():
     top_cpr = (high + low) / 2
     bottom_cpr = (pivot_point - (high - low) / 2)
 
-    # Print calculated CPR levels
-    print(f"[{datetime.now()}] CPR Calculated")
-    print(f"Top CPR (TC): {top_cpr}")
-    print(f"Bottom CPR (BC): {bottom_cpr}")
-    print("Monitoring for Buy and Put Signals...")
+    # Display calculated CPR levels
+    st.write(f"**[{datetime.now()}] CPR Calculated**")
+    st.write(f"**Top CPR (TC):** {top_cpr}")
+    st.write(f"**Bottom CPR (BC):** {bottom_cpr}")
 
 # Function to check for buy and put signals
 def check_signals():
-    global top_cpr, bottom_cpr, check_count
-
     # Fetch the latest price of Bank Nifty with a valid period
     ticker_symbol = "^NSEBANK"
     bank_nifty = yf.Ticker(ticker_symbol)
@@ -46,26 +49,26 @@ def check_signals():
 
         # Check for buy signal (current price crosses above top CPR)
         if current_price >= top_cpr:
-            print(f"[{datetime.now()}] Buy Signal! Current Price: {current_price} has touched and is above Top CPR: {top_cpr}")
+            st.success(f"[{datetime.now()}] **Buy Signal!** Current Price: {current_price} has touched and is above Top CPR: {top_cpr}")
 
         # Check for put signal (current price crosses below bottom CPR)
         elif current_price <= bottom_cpr:
-            print(f"[{datetime.now()}] Put Signal! Current Price: {current_price} has touched and is below Bottom CPR: {bottom_cpr}")
-        
+            st.error(f"[{datetime.now()}] **Put Signal!** Current Price: {current_price} has touched and is below Bottom CPR: {bottom_cpr}")
+
         else:
-            print(f"[{datetime.now()}] Current Price: {current_price} is between CPR levels. No signal.")
-
-        check_count += 1  # Increment the check count
+            st.write(f"[{datetime.now()}] Current Price: {current_price} is between CPR levels. No signal.")
     else:
-        print(f"[{datetime.now()}] No data available for the latest price.")
+        st.warning(f"[{datetime.now()}] No data available for the latest price.")
 
-# Calculate CPR immediately for testing
-calculate_cpr()
+# Calculate CPR on the first run
+if st.button("Calculate CPR"):
+    calculate_cpr()
 
-# Monitoring loop with a limit on checks for testing purposes
-while True:
-    if 'top_cpr' in globals() and 'bottom_cpr' in globals():  # Check if CPR levels have been calculated
-        check_signals()
-    time.sleep(5)  # Adjust this interval as needed
+# Check signals every few seconds (Auto-refresh)
+if top_cpr is not None and bottom_cpr is not None:
+    st.write("Monitoring for Buy and Put Signals...")
+    check_signals()
 
-print("Script completed after reaching max checks.")
+# Auto-refresh every 60 seconds
+st_autorefresh = st.experimental_rerun
+st_autorefresh(interval=60000, limit=100, key="signal_refresh")
