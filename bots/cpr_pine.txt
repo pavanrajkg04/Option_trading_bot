@@ -1,0 +1,59 @@
+//@version=5
+strategy("Enhanced CPR-Based Strategy", overlay=true)
+
+// Get Previous Day's High, Low, and Close
+prevHigh = request.security(syminfo.tickerid, "D", high[1])
+prevLow = request.security(syminfo.tickerid, "D", low[1])
+prevClose = request.security(syminfo.tickerid, "D", close[1])
+
+// Calculate Previous Day's Pivot Level (CPR)
+prevPivot = (prevHigh + prevLow + prevClose) / 3
+prevBC = (prevHigh + prevLow) / 2
+prevTC = (prevPivot - prevBC) + prevPivot
+
+// Get Today's High, Low, and Close
+todayHigh = request.security(syminfo.tickerid, "D", high)
+todayLow = request.security(syminfo.tickerid, "D", low)
+todayClose = request.security(syminfo.tickerid, "D", close)
+
+// Calculate Today's Pivot Level (CPR)
+pivot = (todayHigh + todayLow + todayClose) / 3
+bc = (todayHigh + todayLow) / 2
+tc = (pivot - bc) + pivot
+
+// Plot Today's CPR Levels
+plot(pivot, color=color.blue, linewidth=2, title="Pivot")
+plot(bc, color=color.red, linewidth=1, title="Bottom CPR")
+plot(tc, color=color.green, linewidth=1, title="Top CPR")
+
+// Check if Previous Close is near High or Low (20% threshold for proximity)
+isNearPrevHigh = math.abs(prevHigh - prevClose) < (prevHigh - prevLow) * 0.2
+isNearPrevLow = math.abs(prevLow - prevClose) < (prevHigh - prevLow) * 0.2
+
+// Define Buy and Sell Preconditions
+buyPrecondition = pivot > prevPivot // Today's Pivot > Previous Pivot and Previous Close near High
+sellPrecondition = pivot < prevPivot // Today's Pivot < Previous Pivot and Previous Close near Low
+
+// Define Buy and Sell conditions based on the preconditions and CPR levels
+buyCondition = buyPrecondition and ta.crossover(close, tc)  // Buy when price crosses above the Top CPR with preconditions met
+sellCondition = sellPrecondition and ta.crossunder(close, bc) // Sell when price crosses below the Bottom CPR with preconditions met
+
+// Execute Buy and Sell orders based on conditions
+if (buyCondition)
+    strategy.entry("Buy", strategy.long)
+if (sellCondition)
+    strategy.entry("Sell", strategy.short)
+
+// Set a 30-point target and a 10-point stop loss for each trade
+targetPoints = 100
+stopLossPoints = 30
+
+// Calculate the target and stop loss based on entry price
+if (buyCondition)
+    strategy.exit("Buy Target/SL", from_entry="Buy", limit=close + targetPoints, stop=close - stopLossPoints)
+if (sellCondition)
+    strategy.exit("Sell Target/SL", from_entry="Sell", limit=close - targetPoints, stop=close + stopLossPoints)
+
+// Optional: Plot Buy and Sell Signals
+plotshape(series=buyCondition, title="Buy Signal", location=location.belowbar, color=color.green, style=shape.labelup, text="BUY")
+plotshape(series=sellCondition, title="Sell Signal", location=location.abovebar, color=color.red, style=shape.labeldown, text="SELL")
